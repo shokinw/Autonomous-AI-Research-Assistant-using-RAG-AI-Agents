@@ -1,0 +1,268 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Physical AI Research Assistant</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #0b1020;
+      color: #edf2ff;
+      min-height: 100vh;
+    }
+
+    .app {
+      width: min(900px, 94%);
+      margin: 0 auto;
+      padding: 32px 0;
+    }
+
+    header {
+      padding: 22px;
+      border: 1px solid #283552;
+      background: #121a30;
+      border-radius: 18px;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      color: #78e3c3;
+      font-size: 12px;
+      letter-spacing: 2px;
+      font-weight: 700;
+    }
+
+    h1 { margin: 10px 0; font-size: clamp(24px, 4vw, 34px); }
+    header p { color: #aebbd4; margin-bottom: 0; line-height: 1.6; }
+
+    .status {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 14px;
+      font-size: 13px;
+      color: #78e3c3;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #78e3c3;
+    }
+
+    .chat {
+      min-height: 300px;
+      padding: 20px;
+      background: #121a30;
+      border: 1px solid #283552;
+      border-radius: 18px;
+    }
+
+    .welcome {
+      text-align: center;
+      padding: 45px 12px;
+      color: #aebbd4;
+      line-height: 1.7;
+    }
+
+    .welcome strong {
+      display: block;
+      color: #edf2ff;
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .message { margin: 0 0 22px; }
+    .role { font-size: 12px; color: #78e3c3; margin-bottom: 8px; font-weight: 700; }
+    .bubble {
+      background: #1a2540;
+      border: 1px solid #2b3a59;
+      border-radius: 12px;
+      padding: 15px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .sources { margin-top: 12px; }
+    .sources summary { cursor: pointer; color: #9bb6ff; font-size: 13px; }
+    .source {
+      padding: 12px;
+      margin-top: 8px;
+      border-left: 3px solid #78e3c3;
+      background: #0d1426;
+      border-radius: 6px;
+      color: #c9d5eb;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    form {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    textarea {
+      flex: 1;
+      min-width: 0;
+      resize: vertical;
+      min-height: 54px;
+      max-height: 180px;
+      padding: 15px;
+      border-radius: 12px;
+      border: 1px solid #344362;
+      background: #121a30;
+      color: white;
+      font: inherit;
+    }
+
+    textarea:focus { outline: 2px solid #78e3c3; }
+    button {
+      padding: 0 22px;
+      border: 0;
+      border-radius: 12px;
+      background: #78e3c3;
+      color: #09251e;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled { opacity: 0.55; cursor: wait; }
+    .hint { color: #8291ad; font-size: 12px; margin: 10px 4px; }
+    .error { color: #ffb4b4; }
+
+    @media (max-width: 520px) {
+      .app { padding: 16px 0; }
+      form { flex-direction: column; }
+      button { min-height: 48px; }
+      .chat { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="eyebrow">LOCAL AI · RAG · RESEARCH</div>
+      <h1>Physical AI Research Assistant</h1>
+      <p>Ask questions about your research paper. Answers are generated locally using retrieved PDF passages.</p>
+      <div class="status"><span class="dot"></span> Local RAG assistant</div>
+    </header>
+
+    <section class="chat" id="chat" aria-live="polite">
+      <div class="welcome" id="welcome">
+        <strong>Your research, easier to explore.</strong>
+        Ask a question about your PDF to get an answer with source passages.
+      </div>
+    </section>
+
+    <form id="question-form">
+      <textarea id="question" rows="2" required
+        placeholder="Ask something about your research paper..."></textarea>
+      <button id="ask-button" type="submit">Ask AI ↗</button>
+    </form>
+    <p class="hint">Enter to ask · Shift + Enter for a new line</p>
+  </main>
+
+  <script>
+    const form = document.getElementById("question-form");
+    const input = document.getElementById("question");
+    const button = document.getElementById("ask-button");
+    const chat = document.getElementById("chat");
+    const welcome = document.getElementById("welcome");
+
+    function addTextElement(parent, tag, className, text) {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      element.textContent = text;
+      parent.appendChild(element);
+      return element;
+    }
+
+    function addMessage(role, text, sources = []) {
+      welcome?.remove();
+
+      const message = document.createElement("article");
+      message.className = "message";
+
+      addTextElement(message, "div", "role", role);
+      addTextElement(message, "div", "bubble", text);
+
+      if (sources.length) {
+        const details = document.createElement("details");
+        details.className = "sources";
+
+        addTextElement(details, "summary", "", `View ${sources.length} retrieved source passages`);
+
+        for (const source of sources) {
+          const label = `${source.source} · Page ${source.page} · Similarity ${source.similarity}`;
+          const card = document.createElement("div");
+          card.className = "source";
+          addTextElement(card, "strong", "", label);
+          addTextElement(card, "p", "", source.text);
+          details.appendChild(card);
+        }
+
+        message.appendChild(details);
+      }
+
+      chat.appendChild(message);
+      message.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const question = input.value.trim();
+      if (!question) return;
+
+      addMessage("YOU", question);
+      input.value = "";
+      button.disabled = true;
+      button.textContent = "Thinking...";
+      input.disabled = true;
+
+      const loading = addTextElement(chat, "div", "hint", "Searching your paper and generating an answer...");
+
+      try {
+        const response = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "The request failed.");
+        }
+
+        addMessage("RESEARCH ASSISTANT", data.answer, data.retrieved_passages || []);
+      } catch (error) {
+        addMessage("ERROR", `Could not get an answer: ${error.message}. Check that the backend and Ollama are running.`);
+      } finally {
+        loading.remove();
+        button.disabled = false;
+        button.textContent = "Ask AI ↗";
+        input.disabled = false;
+        input.focus();
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+  </script>
+</body>
+</html>
